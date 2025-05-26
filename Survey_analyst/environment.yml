@@ -1,0 +1,11 @@
+name: app_environment
+channels:
+  - snowflake
+dependencies:
+  - matplotlib=3.10.0
+  - networkx=3.4.2
+  - plotly=6.0.1
+  - python=3.11.*
+  - scikit-learn=1.6.1
+  - snowflake-snowpark-python=
+  - streamlit=
