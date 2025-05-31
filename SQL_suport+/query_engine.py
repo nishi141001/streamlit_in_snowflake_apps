@@ -157,19 +157,6 @@ def generate_sql_query():
 def execute_query():
     """クエリを実行して結果を取得"""
     try:
-        errors, warnings = validate_query_before_execution()
-        
-        if errors:
-            st.error("以下のエラーを修正してください：")
-            for error in errors:
-                st.error(f"• {error}")
-            return None, None
-        
-        if warnings:
-            st.warning("以下の警告があります：")
-            for warning in warnings:
-                st.warning(f"• {warning}")
-        
         query = generate_sql_query()
         if not query:
             return None, None

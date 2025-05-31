@@ -334,12 +334,6 @@ def render_join_config():
         join_table = st.selectbox("結合するテーブル", available_tables, key="new_join_table")
         
         if join_table:
-            join_type = st.selectbox(
-                "結合タイプ", 
-                ["INNER JOIN", "LEFT JOIN", "RIGHT JOIN", "FULL OUTER JOIN"],
-                key="new_join_type"
-            )
-            
             try:
                 left_table_cols = list(get_dynamic_columns(
                     st.session_state.selected_table,
@@ -356,19 +350,40 @@ def render_join_config():
                 if not left_table_cols or not right_table_cols:
                     st.warning("カラム情報の取得に失敗しました。")
                 else:
-                    left_column = st.selectbox(
-                        f"{st.session_state.selected_table} のカラム", 
-                        left_table_cols,
-                        key="new_left_column"
-                    )
+                    col1, col2 = st.columns(2)
                     
-                    right_column = st.selectbox(
-                        f"{join_table} のカラム", 
-                        right_table_cols,
-                        key="new_right_column"
-                    )
+                    with col1:
+                        join_type = st.selectbox(
+                            "結合タイプ", 
+                            ["INNER JOIN", "LEFT JOIN", "RIGHT JOIN", "FULL OUTER JOIN"],
+                            key="new_join_type"
+                        )
+                        left_column = st.selectbox(
+                            f"{st.session_state.selected_table} のカラム", 
+                            left_table_cols,
+                            key="new_left_column"
+                        )
                     
-                    if st.button("JOINを追加", key="add_join"):
+                    with col2:
+                        st.markdown("#### 結合条件")
+                        st.markdown(f"**{st.session_state.selected_table}** のカラム: `{left_column}`")
+                        right_column = st.selectbox(
+                            f"{join_table} のカラム", 
+                            right_table_cols,
+                            key="new_right_column"
+                        )
+                        st.markdown(f"**{join_table}** のカラム: `{right_column}`")
+                    
+                    # 生成されるJOIN句を表示
+                    join_sql = f"""
+{join_type} {st.session_state.selected_db}.{st.session_state.selected_schema}.{join_table} 
+  ON {st.session_state.selected_table}.{left_column} = {join_table}.{right_column}
+                    """.strip()
+                    
+                    st.markdown("**生成されるJOIN句:**")
+                    st.code(join_sql, language="sql")
+                    
+                    if st.button("JOINを追加", key="add_join", use_container_width=True):
                         new_join = {
                             "table": join_table,
                             "type": join_type,
@@ -386,51 +401,62 @@ def render_join_config():
     for i, join_info in enumerate(st.session_state.join_conditions):
         with st.expander(f"🔗 {join_info['table']} ({join_info['type']})", expanded=True):
             try:
-                join_type = st.selectbox(
-                    "結合タイプ", 
-                    ["INNER JOIN", "LEFT JOIN", "RIGHT JOIN", "FULL OUTER JOIN"],
-                    index=["INNER JOIN", "LEFT JOIN", "RIGHT JOIN", "FULL OUTER JOIN"].index(join_info['type']),
-                    key=f"join_type_{i}"
-                )
+                col1, col2 = st.columns(2)
                 
-                left_table_cols = list(get_dynamic_columns(
-                    st.session_state.selected_table,
-                    st.session_state.selected_db,
-                    st.session_state.selected_schema
-                ).keys())
-                
-                right_table_cols = list(get_dynamic_columns(
-                    join_info['table'],
-                    st.session_state.selected_db,
-                    st.session_state.selected_schema
-                ).keys())
-                
-                if not left_table_cols or not right_table_cols:
-                    st.warning("カラム情報の取得に失敗しました。")
-                    left_column = join_info.get('left_col', 'ERROR')
-                    right_column = join_info.get('right_col', 'ERROR')
-                else:
-                    left_index = 0
-                    if join_info.get('left_col') and join_info['left_col'] in left_table_cols:
-                        left_index = left_table_cols.index(join_info['left_col'])
-                    
-                    right_index = 0
-                    if join_info.get('right_col') and join_info['right_col'] in right_table_cols:
-                        right_index = right_table_cols.index(join_info['right_col'])
-                    
-                    left_column = st.selectbox(
-                        f"{st.session_state.selected_table} のカラム", 
-                        left_table_cols,
-                        index=left_index,
-                        key=f"left_column_{i}"
+                with col1:
+                    join_type = st.selectbox(
+                        "結合タイプ", 
+                        ["INNER JOIN", "LEFT JOIN", "RIGHT JOIN", "FULL OUTER JOIN"],
+                        index=["INNER JOIN", "LEFT JOIN", "RIGHT JOIN", "FULL OUTER JOIN"].index(join_info['type']),
+                        key=f"join_type_{i}"
                     )
                     
-                    right_column = st.selectbox(
-                        f"{join_info['table']} のカラム", 
-                        right_table_cols,
-                        index=right_index,
-                        key=f"right_column_{i}"
-                    )
+                    left_table_cols = list(get_dynamic_columns(
+                        st.session_state.selected_table,
+                        st.session_state.selected_db,
+                        st.session_state.selected_schema
+                    ).keys())
+                    
+                    if not left_table_cols:
+                        st.warning("メインテーブルのカラム情報の取得に失敗しました。")
+                        left_column = join_info.get('left_col', 'ERROR')
+                    else:
+                        left_index = 0
+                        if join_info.get('left_col') and join_info['left_col'] in left_table_cols:
+                            left_index = left_table_cols.index(join_info['left_col'])
+                        
+                        left_column = st.selectbox(
+                            f"{st.session_state.selected_table} のカラム", 
+                            left_table_cols,
+                            index=left_index,
+                            key=f"left_column_{i}"
+                        )
+                
+                with col2:
+                    st.markdown("#### 結合条件")
+                    st.markdown(f"**{st.session_state.selected_table}** のカラム: `{left_column}`")
+                    
+                    right_table_cols = list(get_dynamic_columns(
+                        join_info['table'],
+                        st.session_state.selected_db,
+                        st.session_state.selected_schema
+                    ).keys())
+                    
+                    if not right_table_cols:
+                        st.warning(f"結合テーブル {join_info['table']} のカラム情報の取得に失敗しました。")
+                        right_column = join_info.get('right_col', 'ERROR')
+                    else:
+                        right_index = 0
+                        if join_info.get('right_col') and join_info['right_col'] in right_table_cols:
+                            right_index = right_table_cols.index(join_info['right_col'])
+                        
+                        right_column = st.selectbox(
+                            f"{join_info['table']} のカラム", 
+                            right_table_cols,
+                            index=right_index,
+                            key=f"right_column_{i}"
+                        )
+                        st.markdown(f"**{join_info['table']}** のカラム: `{right_column}`")
                 
                 st.session_state.join_conditions[i].update({
                     "type": join_type,
@@ -438,6 +464,7 @@ def render_join_config():
                     "right_col": right_column
                 })
                 
+                # 生成されるJOIN句を表示
                 join_sql = f"""
 {join_type} {st.session_state.selected_db}.{st.session_state.selected_schema}.{join_info['table']} 
   ON {st.session_state.selected_table}.{left_column} = {join_info['table']}.{right_column}
@@ -449,7 +476,7 @@ def render_join_config():
             except Exception as e:
                 st.error(f"JOIN設定 {i+1} でエラーが発生: {str(e)}")
             
-            if st.button("🗑️ JOINを削除", key=f"delete_join_{i}"):
+            if st.button("🗑️ JOINを削除", key=f"delete_join_{i}", use_container_width=True):
                 st.session_state.join_conditions.pop(i)
                 st.success("JOIN設定を削除しました")
                 st.rerun()
@@ -774,7 +801,6 @@ def load_saved_config(config_name):
             st.session_state.saved_configs[config_name]["last_used"] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             
             st.session_state.last_error = None
-            st.session_state.query_validation_errors = []
             
             st.success(f"✅ 設定「{config_name}」を読み込みました")
             time.sleep(1)
@@ -983,9 +1009,13 @@ def render_saved_configs():
         st.markdown("---")
         st.markdown("#### 🔧 一括操作")
         
-        col1, col2 = st.columns(2)
+        col1, col2, col3 = st.columns(3)
         
         with col1:
+            if st.button("📤 全設定をエクスポート", use_container_width=True):
+                export_all_configs()
+        
+        with col2:
             if st.button("🗑️ 全設定を削除", use_container_width=True):
                 if st.session_state.get("confirm_delete_all", False):
                     delete_all_configs()
@@ -995,7 +1025,7 @@ def render_saved_configs():
                     st.warning("⚠️ 全ての設定を削除しますか？もう一度ボタンを押してください。")
                     st.rerun()
         
-        with col2:
+        with col3:
             st.empty()  # インポート機能の代わりに空のスペースを配置
     
     else:

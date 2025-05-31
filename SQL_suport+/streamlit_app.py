@@ -200,21 +200,6 @@ def main():
         
         # === 実行ボタン ===
         if st.session_state.selected_table:
-            # クエリ検証ボタン
-            if st.button("🔍 クエリを検証", use_container_width=True):
-                errors, warnings = validate_query_before_execution()
-                if errors:
-                    st.error("❌ 検証エラー:")
-                    for error in errors:
-                        st.error(f"• {error}")
-                elif warnings:
-                    st.warning("⚠️ 検証警告:")
-                    for warning in warnings:
-                        st.warning(f"• {warning}")
-                    st.success("✅ 警告はありますが実行可能です")
-                else:
-                    st.success("✅ 検証に合格しました")
-            
             # 実行ボタン
             if st.button("🔍 データ抽出実行", use_container_width=True, type="primary"):
                 with st.spinner("データを抽出中..."):
@@ -310,7 +295,7 @@ def main():
         """, unsafe_allow_html=True)
         
         # 結果タブ
-        tab1, tab2, tab3, tab4 = st.tabs(["📋 データ", "📊 グラフ", "💾 ダウンロード", "📝 SQL"])
+        tab1, tab2, tab3 = st.tabs(["📋 データ", "📊 グラフ", "💾 ダウンロード"])
         
         with tab1:
             # データの表示オプション
@@ -350,26 +335,6 @@ def main():
         
         with tab3:
             render_download_section(result_data)
-        
-        with tab4:
-            st.subheader("📝 実行されたSQL")
-            try:
-                executed_sql = generate_sql_query()
-                if executed_sql:
-                    st.code(executed_sql, language="sql")
-                    
-                    # SQLをコピーするボタン
-                    st.download_button(
-                        label="📋 SQLをファイルとしてダウンロード",
-                        data=executed_sql,
-                        file_name=f"query_{datetime.now().strftime('%Y%m%d_%H%M%S')}.sql",
-                        mime="text/plain",
-                        use_container_width=True
-                    )
-                else:
-                    st.error("SQLの生成に失敗しました")
-            except Exception as e:
-                st.error(f"SQLの表示中にエラーが発生しました: {str(e)}")
     
     elif st.session_state.selected_table:
         # テーブル選択済みだが未実行の場合
