@@ -331,9 +331,14 @@ def render_join_config():
     
     # 新しいJOINを追加
     with st.expander("➕ JOINを追加", expanded=False):
-        join_table = st.selectbox("結合するテーブル", available_tables, key="new_join_table")
+        # 初期値を空にするために、index=0の代わりにNoneを指定
+        join_table = st.selectbox(
+            "結合するテーブル",
+            [""] + available_tables,  # 空の選択肢を追加
+            key="new_join_table"
+        )
         
-        if join_table:
+        if join_table and join_table != "":  # 空の選択肢が選ばれていない場合のみ処理
             try:
                 left_table_cols = list(get_dynamic_columns(
                     st.session_state.selected_table,
@@ -350,29 +355,27 @@ def render_join_config():
                 if not left_table_cols or not right_table_cols:
                     st.warning("カラム情報の取得に失敗しました。")
                 else:
-                    col1, col2 = st.columns(2)
+                    # 結合タイプと結合条件を1カラムで表示
+                    join_type = st.selectbox(
+                        "結合タイプ", 
+                        ["INNER JOIN", "LEFT JOIN", "RIGHT JOIN", "FULL OUTER JOIN"],
+                        key="new_join_type"
+                    )
                     
-                    with col1:
-                        join_type = st.selectbox(
-                            "結合タイプ", 
-                            ["INNER JOIN", "LEFT JOIN", "RIGHT JOIN", "FULL OUTER JOIN"],
-                            key="new_join_type"
-                        )
-                        left_column = st.selectbox(
-                            f"{st.session_state.selected_table} のカラム", 
-                            left_table_cols,
-                            key="new_left_column"
-                        )
+                    st.markdown("#### 結合条件")
+                    st.markdown(f"**{st.session_state.selected_table}** のカラム:")
+                    left_column = st.selectbox(
+                        f"{st.session_state.selected_table} のカラム", 
+                        left_table_cols,
+                        key="new_left_column"
+                    )
                     
-                    with col2:
-                        st.markdown("#### 結合条件")
-                        st.markdown(f"**{st.session_state.selected_table}** のカラム: `{left_column}`")
-                        right_column = st.selectbox(
-                            f"{join_table} のカラム", 
-                            right_table_cols,
-                            key="new_right_column"
-                        )
-                        st.markdown(f"**{join_table}** のカラム: `{right_column}`")
+                    st.markdown(f"**{join_table}** のカラム:")
+                    right_column = st.selectbox(
+                        f"{join_table} のカラム", 
+                        right_table_cols,
+                        key="new_right_column"
+                    )
                     
                     # 生成されるJOIN句を表示
                     join_sql = f"""
@@ -401,62 +404,58 @@ def render_join_config():
     for i, join_info in enumerate(st.session_state.join_conditions):
         with st.expander(f"🔗 {join_info['table']} ({join_info['type']})", expanded=True):
             try:
-                col1, col2 = st.columns(2)
+                # 結合タイプと結合条件を1カラムで表示
+                join_type = st.selectbox(
+                    "結合タイプ", 
+                    ["INNER JOIN", "LEFT JOIN", "RIGHT JOIN", "FULL OUTER JOIN"],
+                    index=["INNER JOIN", "LEFT JOIN", "RIGHT JOIN", "FULL OUTER JOIN"].index(join_info['type']),
+                    key=f"join_type_{i}"
+                )
                 
-                with col1:
-                    join_type = st.selectbox(
-                        "結合タイプ", 
-                        ["INNER JOIN", "LEFT JOIN", "RIGHT JOIN", "FULL OUTER JOIN"],
-                        index=["INNER JOIN", "LEFT JOIN", "RIGHT JOIN", "FULL OUTER JOIN"].index(join_info['type']),
-                        key=f"join_type_{i}"
-                    )
-                    
-                    left_table_cols = list(get_dynamic_columns(
-                        st.session_state.selected_table,
-                        st.session_state.selected_db,
-                        st.session_state.selected_schema
-                    ).keys())
-                    
-                    if not left_table_cols:
-                        st.warning("メインテーブルのカラム情報の取得に失敗しました。")
-                        left_column = join_info.get('left_col', 'ERROR')
-                    else:
-                        left_index = 0
-                        if join_info.get('left_col') and join_info['left_col'] in left_table_cols:
-                            left_index = left_table_cols.index(join_info['left_col'])
-                        
-                        left_column = st.selectbox(
-                            f"{st.session_state.selected_table} のカラム", 
-                            left_table_cols,
-                            index=left_index,
-                            key=f"left_column_{i}"
-                        )
+                left_table_cols = list(get_dynamic_columns(
+                    st.session_state.selected_table,
+                    st.session_state.selected_db,
+                    st.session_state.selected_schema
+                ).keys())
                 
-                with col2:
+                if not left_table_cols:
+                    st.warning("メインテーブルのカラム情報の取得に失敗しました。")
+                    left_column = join_info.get('left_col', 'ERROR')
+                else:
+                    left_index = 0
+                    if join_info.get('left_col') and join_info['left_col'] in left_table_cols:
+                        left_index = left_table_cols.index(join_info['left_col'])
+                    
                     st.markdown("#### 結合条件")
-                    st.markdown(f"**{st.session_state.selected_table}** のカラム: `{left_column}`")
+                    st.markdown(f"**{st.session_state.selected_table}** のカラム:")
+                    left_column = st.selectbox(
+                        f"{st.session_state.selected_table} のカラム", 
+                        left_table_cols,
+                        index=left_index,
+                        key=f"left_column_{i}"
+                    )
+                
+                right_table_cols = list(get_dynamic_columns(
+                    join_info['table'],
+                    st.session_state.selected_db,
+                    st.session_state.selected_schema
+                ).keys())
+                
+                if not right_table_cols:
+                    st.warning(f"結合テーブル {join_info['table']} のカラム情報の取得に失敗しました。")
+                    right_column = join_info.get('right_col', 'ERROR')
+                else:
+                    right_index = 0
+                    if join_info.get('right_col') and join_info['right_col'] in right_table_cols:
+                        right_index = right_table_cols.index(join_info['right_col'])
                     
-                    right_table_cols = list(get_dynamic_columns(
-                        join_info['table'],
-                        st.session_state.selected_db,
-                        st.session_state.selected_schema
-                    ).keys())
-                    
-                    if not right_table_cols:
-                        st.warning(f"結合テーブル {join_info['table']} のカラム情報の取得に失敗しました。")
-                        right_column = join_info.get('right_col', 'ERROR')
-                    else:
-                        right_index = 0
-                        if join_info.get('right_col') and join_info['right_col'] in right_table_cols:
-                            right_index = right_table_cols.index(join_info['right_col'])
-                        
-                        right_column = st.selectbox(
-                            f"{join_info['table']} のカラム", 
-                            right_table_cols,
-                            index=right_index,
-                            key=f"right_column_{i}"
-                        )
-                        st.markdown(f"**{join_info['table']}** のカラム: `{right_column}`")
+                    st.markdown(f"**{join_info['table']}** のカラム:")
+                    right_column = st.selectbox(
+                        f"{join_info['table']} のカラム", 
+                        right_table_cols,
+                        index=right_index,
+                        key=f"right_column_{i}"
+                    )
                 
                 st.session_state.join_conditions[i].update({
                     "type": join_type,
@@ -698,62 +697,55 @@ def render_table_structures():
         if not session:
             st.error("Snowflakeセッションが初期化されていません")
             return
-            
+        
+        # メインテーブルの構造を表示
+        st.markdown(f"**📋 メインテーブル: {st.session_state.selected_table}**")
+        schema_data = get_table_schema(
+            session,
+            st.session_state.selected_db,
+            st.session_state.selected_schema,
+            st.session_state.selected_table
+        )
+        if schema_data:
+            df_schema = pd.DataFrame(schema_data)
+            df_schema.columns = ["カラム名", "データ型", "サンプル"]
+            st.dataframe(df_schema, use_container_width=True, hide_index=True)
+        else:
+            st.warning("メインテーブルのスキーマ情報を取得できませんでした")
+        
+        # 結合テーブルの構造を表示
+        join_tables = []
+        
+        # 新規JOIN設定のテーブル
+        if 'new_join_table' in st.session_state and st.session_state.new_join_table:
+            join_tables.append(st.session_state.new_join_table)
+        
+        # 既存のJOIN設定のテーブル
         if st.session_state.join_conditions:
-            join_tables = [join_info['table'] for join_info in st.session_state.join_conditions]
-            
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                st.markdown(f"**📋 メインテーブル: {st.session_state.selected_table}**")
-                
-                schema_data = get_table_schema(
-                    session,
-                    st.session_state.selected_db,
-                    st.session_state.selected_schema,
-                    st.session_state.selected_table
-                )
-                if schema_data:
-                    df_schema = pd.DataFrame(schema_data)
-                    df_schema.columns = ["カラム名", "データ型", "サンプル"]
-                    st.dataframe(df_schema, use_container_width=True, hide_index=True)
-                else:
-                    st.warning("メインテーブルのスキーマ情報を取得できませんでした")
-            
-            with col2:
-                first_join_table = join_tables[0]
-                st.markdown(f"**🔗 結合テーブル: {first_join_table}**")
-                
-                join_schema_data = get_table_schema(
-                    session,
-                    st.session_state.selected_db,
-                    st.session_state.selected_schema,
-                    first_join_table
-                )
-                if join_schema_data:
-                    df_join_schema = pd.DataFrame(join_schema_data)
-                    df_join_schema.columns = ["カラム名", "データ型", "サンプル"]
-                    st.dataframe(df_join_schema, use_container_width=True, hide_index=True)
-                else:
-                    st.warning(f"結合テーブル {first_join_table} のスキーマ情報を取得できませんでした")
-            
-            if len(join_tables) > 1:
-                st.markdown("### 📋 追加の結合テーブル")
-                for additional_table in join_tables[1:]:
-                    with st.expander(f"🔗 {additional_table}", expanded=False):
-                        additional_schema_data = get_table_schema(
-                            session,
-                            st.session_state.selected_db,
-                            st.session_state.selected_schema,
-                            additional_table
-                        )
-                        if additional_schema_data:
-                            df_additional_schema = pd.DataFrame(additional_schema_data)
-                            df_additional_schema.columns = ["カラム名", "データ型", "サンプル"]
-                            st.dataframe(df_additional_schema, use_container_width=True, hide_index=True)
-                        else:
-                            st.warning(f"テーブル {additional_table} のスキーマ情報を取得できませんでした")
-            
+            join_tables.extend([join_info['table'] for join_info in st.session_state.join_conditions])
+        
+        # 重複を除去
+        join_tables = list(dict.fromkeys(join_tables))
+        
+        if join_tables:
+            st.markdown("### 🔗 結合テーブル")
+            for join_table in join_tables:
+                with st.expander(f"📋 {join_table}", expanded=True):
+                    join_schema_data = get_table_schema(
+                        session,
+                        st.session_state.selected_db,
+                        st.session_state.selected_schema,
+                        join_table
+                    )
+                    if join_schema_data:
+                        df_join_schema = pd.DataFrame(join_schema_data)
+                        df_join_schema.columns = ["カラム名", "データ型", "サンプル"]
+                        st.dataframe(df_join_schema, use_container_width=True, hide_index=True)
+                    else:
+                        st.warning(f"テーブル {join_table} のスキーマ情報を取得できませんでした")
+        
+        # 結合条件の表示
+        if st.session_state.join_conditions:
             st.markdown("### 🔗 結合条件")
             for i, join_info in enumerate(st.session_state.join_conditions):
                 st.markdown(f"""
@@ -763,22 +755,6 @@ def render_table_structures():
                     ON {st.session_state.selected_table}.{join_info['left_col']} = {join_info['table']}.{join_info['right_col']}
                 </div>
                 """, unsafe_allow_html=True)
-        
-        else:
-            st.markdown(f"**📋 メインテーブル: {st.session_state.selected_table}**")
-            
-            schema_data = get_table_schema(
-                session,
-                st.session_state.selected_db,
-                st.session_state.selected_schema,
-                st.session_state.selected_table
-            )
-            if schema_data:
-                df_schema = pd.DataFrame(schema_data)
-                df_schema.columns = ["カラム名", "データ型", "サンプル"]
-                st.dataframe(df_schema, use_container_width=True, hide_index=True)
-            else:
-                st.warning("テーブルのスキーマ情報を取得できませんでした")
     
     except Exception as e:
         st.error(f"テーブル構造の表示でエラーが発生しました: {str(e)}")
