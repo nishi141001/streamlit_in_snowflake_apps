@@ -839,22 +839,18 @@ def render_saved_configs():
         """, unsafe_allow_html=True)
         return
     
-    col1, col2 = st.columns(2)
+    if st.button("🔄 設定を再読み込み", key="reload_configs", use_container_width=True):
+        with st.spinner("設定を読み込み中..."):
+            force_reload_configs()
+            st.success("設定を再読み込みしました")
+            st.rerun()
     
-    with col1:
-        if st.button("🔄 設定を再読み込み", key="reload_configs", use_container_width=True):
-            with st.spinner("設定を読み込み中..."):
-                force_reload_configs()
-                st.success("設定を再読み込みしました")
-                st.rerun()
-    
-    with col2:
-        if st.session_state.saved_configs:
-            total_configs = len(st.session_state.saved_configs)
-            active_configs = sum(1 for config in st.session_state.saved_configs.values() 
-                               if config.get('last_used'))
-            st.metric("設定数", total_configs)
-            st.caption(f"使用済み: {active_configs}件")
+    if st.session_state.saved_configs:
+        total_configs = len(st.session_state.saved_configs)
+        active_configs = sum(1 for config in st.session_state.saved_configs.values() 
+                           if config.get('last_used'))
+        st.metric("設定数", total_configs)
+        st.caption(f"使用済み: {active_configs}件")
     
     if st.session_state.saved_configs:
         # 検索・フィルター機能
