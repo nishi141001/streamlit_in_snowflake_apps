@@ -330,7 +330,11 @@ def render_join_config():
         return
     
     # 新しいJOINを追加
-    with st.expander("➕ JOINを追加", expanded=False):
+    # アコーディオンの状態をセッションで管理
+    if 'join_add_expanded' not in st.session_state:
+        st.session_state.join_add_expanded = False
+    
+    with st.expander("➕ JOINを追加", expanded=st.session_state.join_add_expanded):
         # 初期値を空にするために、index=0の代わりにNoneを指定
         join_table = st.selectbox(
             "結合するテーブル",
@@ -395,10 +399,16 @@ def render_join_config():
                         }
                         st.session_state.join_conditions.append(new_join)
                         st.success(f"JOIN設定を追加しました: {join_type} {join_table}")
+                        # JOIN追加後もアコーディオンを開いたままにする
+                        st.session_state.join_add_expanded = True
                         st.rerun()
             
             except Exception as e:
                 st.error(f"JOIN設定でエラーが発生しました: {str(e)}")
+    
+    # アコーディオンの状態を更新
+    if st.session_state.get('_join_add_expanded') != st.session_state.join_add_expanded:
+        st.session_state._join_add_expanded = st.session_state.join_add_expanded
     
     # 既存のJOIN設定を表示
     for i, join_info in enumerate(st.session_state.join_conditions):
