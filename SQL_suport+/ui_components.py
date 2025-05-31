@@ -842,7 +842,7 @@ def render_saved_configs():
     col1, col2 = st.columns(2)
     
     with col1:
-        if st.button("🔄 設定を再読み込み", key="reload_configs"):
+        if st.button("🔄 設定を再読み込み", key="reload_configs", use_container_width=True):
             with st.spinner("設定を読み込み中..."):
                 force_reload_configs()
                 st.success("設定を再読み込みしました")
