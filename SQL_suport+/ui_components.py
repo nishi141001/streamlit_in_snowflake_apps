@@ -458,11 +458,6 @@ def render_join_config():
 def save_current_config():
     """現在の設定を保存"""
     if st.session_state.selected_table:
-        if st.checkbox("🔍 デバッグ情報を表示", key="show_debug"):
-            st.write("**デバッグ情報:**")
-            st.write(f"選択中のテーブル: {st.session_state.selected_db}.{st.session_state.selected_schema}.{st.session_state.selected_table}")
-            st.write(f"テーブル存在確認: {check_config_table_exists()}")
-        
         config_name = st.text_input("設定名を入力", key="new_config_name")
         description = st.text_input("説明（オプション）", key="new_config_desc")
         
@@ -494,11 +489,6 @@ def save_current_config():
                             "join_conditions": st.session_state.join_conditions.copy(),
                             "filter_conditions": st.session_state.filter_conditions.copy()
                         }
-                        
-                        if st.session_state.get("show_debug", False):
-                            st.write("**保存する設定:**")
-                            st.json(new_config)
-                            st.write("**タグ:**", tags)
                         
                         if save_config_to_table(config_name, new_config, description, tags):
                             force_reload_configs()
@@ -849,7 +839,7 @@ def render_saved_configs():
         """, unsafe_allow_html=True)
         return
     
-    col1, col2, col3 = st.columns(3)
+    col1, col2 = st.columns(2)
     
     with col1:
         if st.button("🔄 設定を再読み込み", key="reload_configs"):
@@ -859,11 +849,6 @@ def render_saved_configs():
                 st.rerun()
     
     with col2:
-        if st.button("🔍 デバッグ情報", key="debug_info"):
-            st.write("**現在の設定数:**", len(st.session_state.saved_configs))
-            st.write("**設定一覧:**", list(st.session_state.saved_configs.keys()))
-    
-    with col3:
         if st.session_state.saved_configs:
             total_configs = len(st.session_state.saved_configs)
             active_configs = sum(1 for config in st.session_state.saved_configs.values() 
