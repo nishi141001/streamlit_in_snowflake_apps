@@ -501,32 +501,8 @@ def save_current_config():
                     st.error("❌ 設定名を入力してください")
         
         with col2:
-            if st.button("📤 設定をエクスポート", key="export_config_btn"):
-                if config_name:
-                    export_config = {
-                        config_name: {
-                            "db": st.session_state.selected_db,
-                            "schema": st.session_state.selected_schema,
-                            "table": st.session_state.selected_table,
-                            "description": description,
-                            "tags": tags,
-                            "conditions": st.session_state.query_conditions.copy(),
-                            "join_conditions": st.session_state.join_conditions.copy(),
-                            "filter_conditions": st.session_state.filter_conditions.copy(),
-                            "exported_at": datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                        }
-                    }
-                    
-                    config_json = json.dumps(export_config, ensure_ascii=False, indent=2)
-                    st.download_button(
-                        label="💾 JSONファイルをダウンロード",
-                        data=config_json,
-                        file_name=f"sql_tool_config_{config_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
-                        mime="application/json",
-                        use_container_width=True
-                    )
-                else:
-                    st.info("設定名を入力してからエクスポートしてください")
+            st.empty()  # エクスポートボタンの代わりに空のスペースを配置
+    
     else:
         st.warning("⚠️ テーブルを選択してから設定を保存してください")
 
@@ -992,7 +968,7 @@ def render_saved_configs():
                                     for tag in config['tags']:
                                         st.write(f"🏷️ {tag}")
                                 
-                                button_col1, button_col2, button_col3 = st.columns(3)
+                                button_col1, button_col2 = st.columns(2)
                                 
                                 with button_col1:
                                     if st.button(f"📂", key=f"load_{config_name}_card_{i}_{j}", help="読み込み"):
@@ -1000,10 +976,6 @@ def render_saved_configs():
                                             load_saved_config(config_name)
                                 
                                 with button_col2:
-                                    if st.button(f"📤", key=f"export_{config_name}_card_{i}_{j}", help="エクスポート"):
-                                        export_single_config(config_name, config)
-                                
-                                with button_col3:
                                     if st.button(f"🗑️", key=f"delete_{config_name}_card_{i}_{j}", help="削除"):
                                         delete_saved_config(config_name)
         
@@ -1011,13 +983,9 @@ def render_saved_configs():
         st.markdown("---")
         st.markdown("#### 🔧 一括操作")
         
-        col1, col2, col3 = st.columns(3)
+        col1, col2 = st.columns(2)
         
         with col1:
-            if st.button("📤 全設定をエクスポート", use_container_width=True):
-                export_all_configs()
-        
-        with col2:
             if st.button("🗑️ 全設定を削除", use_container_width=True):
                 if st.session_state.get("confirm_delete_all", False):
                     delete_all_configs()
@@ -1027,8 +995,8 @@ def render_saved_configs():
                     st.warning("⚠️ 全ての設定を削除しますか？もう一度ボタンを押してください。")
                     st.rerun()
         
-        with col3:
-            render_import_section()
+        with col2:
+            st.empty()  # インポート機能の代わりに空のスペースを配置
     
     else:
         st.info("💡 保存済み設定がありません")
@@ -1040,144 +1008,3 @@ def render_saved_configs():
         """)
         
         st.markdown("---")
-        render_import_section()
-
-
-def render_import_section():
-    """インポート機能のセクション"""
-    st.markdown("#### 📥 設定のインポート")
-    
-    uploaded_file = st.file_uploader(
-        "JSONファイルから設定を読み込み",
-        type="json",
-        key="import_config_file",
-        help="エクスポートしたJSONファイルから設定を読み込みます"
-    )
-    
-    if uploaded_file is not None:
-        try:
-            config_data = json.load(uploaded_file)
-            
-            if not isinstance(config_data, dict):
-                st.error("❌ 無効なファイル形式です")
-                return
-            
-            st.markdown("**インポートする設定:**")
-            
-            import_selections = {}
-            for name, config in config_data.items():
-                if isinstance(config, dict) and 'db' in config:
-                    import_selections[name] = st.checkbox(
-                        f"📋 {name} - {config.get('db', 'N/A')}.{config.get('schema', 'N/A')}.{config.get('table', 'N/A')}",
-                        value=True,
-                        key=f"import_select_{name}"
-                    )
-                    if config.get('description'):
-                        st.caption(f"説明: {config['description']}")
-            
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                if st.button("📥 選択した設定をインポート", key="execute_import"):
-                    imported_count = 0
-                    failed_count = 0
-                    
-                    with st.spinner("設定をインポート中..."):
-                        for name, should_import in import_selections.items():
-                            if should_import and name in config_data:
-                                config = config_data[name]
-                                description = config.get('description', '')
-                                tags = config.get('tags', [])
-                                
-                                clean_config = {
-                                    "db": config.get('db'),
-                                    "schema": config.get('schema'),
-                                    "table": config.get('table'),
-                                    "conditions": config.get('conditions', {}),
-                                    "join_conditions": config.get('join_conditions', []),
-                                    "filter_conditions": config.get('filter_conditions', [])
-                                }
-                                
-                                if save_config_to_table(name, clean_config, description, tags):
-                                    imported_count += 1
-                                else:
-                                    failed_count += 1
-                    
-                    if imported_count > 0:
-                        force_reload_configs()
-                        
-                        st.success(f"✅ {imported_count}件の設定をインポートしました")
-                        if failed_count > 0:
-                            st.warning(f"⚠️ {failed_count}件の設定のインポートに失敗しました")
-                        time.sleep(2)
-                        st.rerun()
-                    else:
-                        st.error("❌ インポートに失敗しました")
-            
-            with col2:
-                if st.button("❌ キャンセル", key="cancel_import"):
-                    st.rerun()
-                    
-        except json.JSONDecodeError:
-            st.error("❌ JSONファイルの形式が正しくありません")
-        except Exception as e:
-            st.error(f"❌ インポート処理中にエラー: {str(e)}")
-
-
-def export_single_config(config_name, config):
-    """単一設定のエクスポート"""
-    export_data = {config_name: config}
-    config_json = json.dumps(export_data, ensure_ascii=False, indent=2)
-    
-    st.download_button(
-        label=f"📥 {config_name}.json をダウンロード",
-        data=config_json,
-        file_name=f"sql_tool_config_{config_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
-        mime="application/json",
-        key=f"download_{config_name}",
-        use_container_width=True
-    )
-
-
-def export_all_configs():
-    """全設定のエクスポート"""
-    if st.session_state.saved_configs:
-        config_json = json.dumps(st.session_state.saved_configs, ensure_ascii=False, indent=2)
-        
-        st.download_button(
-            label="📥 全設定をダウンロード",
-            data=config_json,
-            file_name=f"sql_tool_all_configs_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
-            mime="application/json",
-            key="download_all_configs",
-            use_container_width=True
-        )
-
-
-def delete_all_configs():
-    """全設定を削除"""
-    try:
-        from config_manager import get_user_context, CONFIG_TABLE_NAME
-        from snowflake_utils import init_snowflake_session
-        
-        session = init_snowflake_session()
-        if not session:
-            st.error("Snowflakeセッションが初期化されていません")
-            return
-            
-        user_context = get_user_context()
-        
-        delete_query = f"""
-        UPDATE {CONFIG_TABLE_NAME}
-        SET is_active = FALSE, updated_at = CURRENT_TIMESTAMP()
-        WHERE user_context = '{user_context}'
-        """
-        
-        session.sql(delete_query).collect()
-        st.session_state.saved_configs = {}
-        st.success("✅ 全ての設定を削除しました")
-        time.sleep(1)
-        st.rerun()
-        
-    except Exception as e:
-        st.error(f"❌ 全設定の削除に失敗: {str(e)}")
