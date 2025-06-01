@@ -695,6 +695,29 @@ def render_download_section(data):
         st.error(f"ダウンロード機能でエラーが発生しました: {str(e)}")
 
 
+def get_table_sample(session, table_name, limit=3):
+    """テーブルからサンプルデータを取得"""
+    try:
+        query = f"""
+        SELECT *
+        FROM {st.session_state.selected_db}.{st.session_state.selected_schema}.{table_name}
+        LIMIT {limit}
+        """
+        result = session.sql(query).collect()
+        if result:
+            # カラムごとに値を集めてパイプで結合
+            columns = result[0].as_dict().keys()
+            sample_dict = {}
+            for col in columns:
+                values = [str(row[col]) for row in result if row[col] is not None]
+                sample_dict[col] = " | ".join(values)
+            return sample_dict
+        return {}
+    except Exception as e:
+        st.warning(f"サンプルデータの取得に失敗: {str(e)}")
+        return {}
+
+
 def render_table_structures():
     """テーブル構造を表示"""
     if not st.session_state.selected_table:
@@ -717,8 +740,17 @@ def render_table_structures():
             st.session_state.selected_table
         )
         if schema_data:
+            # サンプルデータを取得
+            sample_data = get_table_sample(session, st.session_state.selected_table)
+            
+            # スキーマデータにサンプルを追加
             df_schema = pd.DataFrame(schema_data)
             df_schema.columns = ["カラム名", "データ型", "サンプル"]
+            
+            # サンプルデータを表示用に整形
+            if sample_data:
+                df_schema["サンプル"] = df_schema["カラム名"].map(lambda x: sample_data.get(x, ""))
+            
             st.dataframe(df_schema, use_container_width=True, hide_index=True)
         else:
             st.warning("メインテーブルのスキーマ情報を取得できませんでした")
@@ -748,8 +780,17 @@ def render_table_structures():
                         join_table
                     )
                     if join_schema_data:
+                        # サンプルデータを取得
+                        sample_data = get_table_sample(session, join_table)
+                        
+                        # スキーマデータにサンプルを追加
                         df_join_schema = pd.DataFrame(join_schema_data)
                         df_join_schema.columns = ["カラム名", "データ型", "サンプル"]
+                        
+                        # サンプルデータを表示用に整形
+                        if sample_data:
+                            df_join_schema["サンプル"] = df_join_schema["カラム名"].map(lambda x: sample_data.get(x, ""))
+                        
                         st.dataframe(df_join_schema, use_container_width=True, hide_index=True)
                     else:
                         st.warning(f"テーブル {join_table} のスキーマ情報を取得できませんでした")
