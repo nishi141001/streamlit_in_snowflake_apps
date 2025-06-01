@@ -179,6 +179,17 @@ def send_message(prompt: str, database: str, schema: str, stage: str, file: str)
     """
     Cortex Analyst APIを呼び出して、指定したSemantic Modelファイルに基づく応答を取得する関数
     """
+    # ファイルパスのデバッグ情報
+    st.sidebar.write("デバッグ情報:")
+    st.sidebar.write(f"データベース: {database}")
+    st.sidebar.write(f"スキーマ: {schema}")
+    st.sidebar.write(f"ステージ: {stage}")
+    st.sidebar.write(f"ファイル: {file}")
+
+    # ファイルパスの構築
+    semantic_model_file = f"@{database}.{schema}.{stage}/{file}"
+    st.sidebar.write(f"構築されたパス: {semantic_model_file}")
+
     request_body = {
         "messages": [
             {
@@ -191,7 +202,7 @@ def send_message(prompt: str, database: str, schema: str, stage: str, file: str)
                 ]
             }
         ],
-        "semantic_model_file": f"@{database}.{schema}.{stage}/{file}",
+        "semantic_model_file": semantic_model_file,
     }
 
     try:
@@ -207,31 +218,24 @@ def send_message(prompt: str, database: str, schema: str, stage: str, file: str)
         if resp["status"] < 400:
             return json.loads(resp["content"])
         else:
+            st.sidebar.error(f"APIレスポンス: {resp}")
             raise Exception(f"Failed request with status {resp['status']}: {resp}")
     except Exception as e:
         st.error(f"Cortex Analyst APIの呼び出しに失敗しました: {e}")
         return None
 
-def process_message(prompt: str, database: str, schema: str, stage: str, file: str) -> None:
+def process_message(prompt: str, database: str, schema: str, stage: str, file: str) -> dict:
     """
-    ユーザーの質問を処理し、チャット形式で応答を表示する関数
+    ユーザーの質問を処理し、応答を生成する関数
+    戻り値: 生成された応答のコンテンツ（テキスト、SQL、提案を含む）
     """
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
-    st.session_state.messages.append(
-        {"role": "user", "content": [{"type": "text", "text": prompt}]}
-    )
-    with st.chat_message("user"):
-        st.markdown(prompt)
-    with st.chat_message("assistant"):
-        with st.spinner("Generating response..."):
-            response = send_message(prompt=prompt, database=database, schema=schema, stage=stage, file=file)
-            if response:
-                content = response["message"]["content"]
-                display_content(content=content)
-                st.session_state.messages.append({"role": "assistant", "content": content})
-            else:
-                st.error("応答の生成中にエラーが発生しました。")
+    with st.spinner("Generating response..."):
+        response = send_message(prompt=prompt, database=database, schema=schema, stage=stage, file=file)
+        if response:
+            return response["message"]["content"]
+        else:
+            st.error("応答の生成中にエラーが発生しました。")
+            return [{"type": "text", "text": "応答の生成中にエラーが発生しました。"}]
 
 def display_content(content: list, message_index: int = None) -> None:
     """
@@ -242,7 +246,7 @@ def display_content(content: list, message_index: int = None) -> None:
         if item["type"] == "text":
             st.markdown(item["text"])
         elif item["type"] == "suggestions":
-            with st.expander("提案", expanded=True):
+            with st.expander("提案された質問", expanded=True):
                 for suggestion_index, suggestion in enumerate(item["suggestions"]):
                     if st.button(suggestion, key=f"{message_index}_{suggestion_index}"):
                         st.session_state.active_suggestion = suggestion
@@ -250,7 +254,7 @@ def display_content(content: list, message_index: int = None) -> None:
             with st.expander("SQL Query", expanded=False):
                 st.code(item["statement"], language="sql")
             with st.expander("Results", expanded=True):
-                with st.spinner("Running SQL..."):
+                with st.spinner("SQLクエリを実行中..."):
                     try:
                         session = get_snowpark_session()
                         if not session:

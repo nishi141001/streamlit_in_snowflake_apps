@@ -75,6 +75,11 @@ if not files:
     st.warning(f"ステージ {selected_stage} にファイルが見つかりませんでした。")
     st.stop()
 
+# デバッグ情報の表示
+st.sidebar.subheader("ステージ内のファイル一覧")
+for file in files:
+    st.sidebar.text(file)
+
 # YAMLファイルのみをフィルタリング
 yaml_files = [f for f in files if f.endswith('.yaml')]
 if not yaml_files:
@@ -87,8 +92,11 @@ selected_file = st.sidebar.selectbox(
     options=yaml_files,
 )
 
+# ファイル名のみを抽出（パスから最後の部分のみを取得）
+file_name = selected_file.split('/')[-1]
+
 # 選択されたファイル名を表示
-st.info(f"選択されたセマンティックモデル: {selected_file}")
+st.info(f"選択されたセマンティックモデル: {file_name}")
 
 # チャット履歴の管理
 if "messages" not in st.session_state:
@@ -102,7 +110,57 @@ if st.sidebar.button("チャット履歴をクリア"):
 # チャット履歴の表示
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
-        st.markdown(message["content"])
+        if isinstance(message["content"], str):
+            st.markdown(message["content"])
+        elif isinstance(message["content"], list):
+            for item in message["content"]:
+                if item["type"] == "text":
+                    st.markdown(item["text"])
+                elif item["type"] == "suggestions":
+                    with st.expander("提案された質問", expanded=True):
+                        for suggestion in item["suggestions"]:
+                            if st.sidebar.button(suggestion):
+                                st.session_state.messages.append({"role": "user", "content": suggestion})
+                                st.rerun()
+                elif item["type"] == "sql":
+                    with st.expander("SQL Query", expanded=False):
+                        st.code(item["statement"], language="sql")
+                    with st.expander("Results", expanded=True):
+                        with st.spinner("SQLクエリを実行中..."):
+                            try:
+                                session = get_snowpark_session()
+                                if not session:
+                                    st.error("Snowparkセッションを利用できません")
+                                    continue
+                                df = session.sql(item["statement"]).to_pandas()
+                                if len(df.index) > 0:
+                                    data_tab, line_tab, bar_tab = st.tabs(["Data", "Line Chart", "Bar Chart"])
+                                    data_tab.dataframe(df)
+                                    if len(df.columns) > 1:
+                                        chart_df = df.copy()
+                                        index_col = chart_df.columns[0]
+                                        chart_df = chart_df.set_index(index_col)
+                                        numeric_cols = chart_df.select_dtypes(include=['number']).columns
+                                        if len(numeric_cols) > 0:
+                                            numeric_df = chart_df[numeric_cols]
+                                            with line_tab:
+                                                st.line_chart(numeric_df)
+                                            with bar_tab:
+                                                st.bar_chart(numeric_df)
+                                        else:
+                                            with line_tab:
+                                                st.info("グラフを表示するには、数値型のカラムが必要です。")
+                                            with bar_tab:
+                                                st.info("グラフを表示するには、数値型のカラムが必要です。")
+                                    else:
+                                        with line_tab:
+                                            st.info("グラフを表示するには、複数のカラムが必要です。")
+                                        with bar_tab:
+                                            st.info("グラフを表示するには、複数のカラムが必要です。")
+                                else:
+                                    st.info("クエリは正常に実行されましたが、結果は空です。")
+                            except Exception as e:
+                                st.error(f"SQLクエリの実行中にエラーが発生しました: {e}")
 
 # ユーザー入力の処理
 if prompt := st.chat_input("質問を入力してください"):
@@ -113,20 +171,53 @@ if prompt := st.chat_input("質問を入力してください"):
 
     # アシスタントの応答を表示
     with st.chat_message("assistant"):
-        response = process_message(prompt, selected_db, selected_schema, selected_stage, selected_file)
-        st.markdown(response)
-        st.session_state.messages.append({"role": "assistant", "content": response})
-
-# 提案された質問の表示
-if st.session_state.messages:
-    st.sidebar.subheader("提案された質問")
-    for message in st.session_state.messages:
-        if message["role"] == "assistant":
-            # 提案された質問を抽出して表示
-            if "提案された質問：" in message["content"]:
-                suggestions = message["content"].split("提案された質問：")[1].split("\n")
-                for suggestion in suggestions:
-                    if suggestion.strip():
-                        if st.sidebar.button(suggestion.strip()):
-                            st.session_state.messages.append({"role": "user", "content": suggestion.strip()})
-                            st.rerun() 
+        response_content = process_message(prompt, selected_db, selected_schema, selected_stage, file_name)
+        for item in response_content:
+            if item["type"] == "text":
+                st.markdown(item["text"])
+            elif item["type"] == "suggestions":
+                with st.expander("提案された質問", expanded=True):
+                    for suggestion in item["suggestions"]:
+                        if st.sidebar.button(suggestion):
+                            st.session_state.messages.append({"role": "user", "content": suggestion})
+                            st.rerun()
+            elif item["type"] == "sql":
+                with st.expander("SQL Query", expanded=False):
+                    st.code(item["statement"], language="sql")
+                with st.expander("Results", expanded=True):
+                    with st.spinner("SQLクエリを実行中..."):
+                        try:
+                            session = get_snowpark_session()
+                            if not session:
+                                st.error("Snowparkセッションを利用できません")
+                                continue
+                            df = session.sql(item["statement"]).to_pandas()
+                            if len(df.index) > 0:
+                                data_tab, line_tab, bar_tab = st.tabs(["Data", "Line Chart", "Bar Chart"])
+                                data_tab.dataframe(df)
+                                if len(df.columns) > 1:
+                                    chart_df = df.copy()
+                                    index_col = chart_df.columns[0]
+                                    chart_df = chart_df.set_index(index_col)
+                                    numeric_cols = chart_df.select_dtypes(include=['number']).columns
+                                    if len(numeric_cols) > 0:
+                                        numeric_df = chart_df[numeric_cols]
+                                        with line_tab:
+                                            st.line_chart(numeric_df)
+                                        with bar_tab:
+                                            st.bar_chart(numeric_df)
+                                    else:
+                                        with line_tab:
+                                            st.info("グラフを表示するには、数値型のカラムが必要です。")
+                                        with bar_tab:
+                                            st.info("グラフを表示するには、数値型のカラムが必要です。")
+                                else:
+                                    with line_tab:
+                                        st.info("グラフを表示するには、複数のカラムが必要です。")
+                                    with bar_tab:
+                                        st.info("グラフを表示するには、複数のカラムが必要です。")
+                            else:
+                                st.info("クエリは正常に実行されましたが、結果は空です。")
+                        except Exception as e:
+                            st.error(f"SQLクエリの実行中にエラーが発生しました: {e}")
+        st.session_state.messages.append({"role": "assistant", "content": response_content}) 
