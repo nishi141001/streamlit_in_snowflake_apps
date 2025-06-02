@@ -495,8 +495,6 @@ with tabs[1]:
             ],
             "semantic_model_file": f"@{database}.{schema}.{stage}/{file}",
         }
-        # DEBUG出力はコメントアウト（必要時のみ有効）
-        # st.write("DEBUG: Request Body", request_body)
 
         try:
             resp = _snowflake.send_snow_api_request(
@@ -514,16 +512,18 @@ with tabs[1]:
                 raise Exception(f"Failed request with status {resp['status']}: {resp}")
         except Exception as e:
             st.error(f"Cortex Analyst APIの呼び出しに失敗しました: {e}")
-            # DEBUG出力はコメントアウト（必要時のみ有効）
-            # st.write("DEBUG: Response Content", resp)
             return None
 
     def process_message(prompt: str, database: str, schema: str, stage: str, file: str) -> None:
         """
         ユーザーの質問を処理し、チャット形式で応答を表示する関数
         """
+        # セッション状態の初期化を改善
         if "messages" not in st.session_state:
             st.session_state.messages = []
+        if "active_suggestion" not in st.session_state:
+            st.session_state.active_suggestion = None
+            
         st.session_state.messages.append(
             {"role": "user", "content": [{"type": "text", "text": prompt}]}
         )
@@ -550,8 +550,11 @@ with tabs[1]:
             elif item["type"] == "suggestions":
                 with st.expander("提案", expanded=True):
                     for suggestion_index, suggestion in enumerate(item["suggestions"]):
-                        if st.button(suggestion, key=f"{message_index}_{suggestion_index}"):
+                        # ユニークなキーを生成
+                        button_key = f"suggestion_{message_index}_{suggestion_index}_{hash(suggestion) % 10000}"
+                        if st.button(suggestion, key=button_key):
                             st.session_state.active_suggestion = suggestion
+                            # 即座にリロードせず、次のループで処理される
             elif item["type"] == "sql":
                 with st.expander("SQL Query", expanded=False):
                     st.code(item["statement"], language="sql")
@@ -602,35 +605,62 @@ with tabs[1]:
         ・選択に応じてCortex Analystモードまたは直接SQLクエリモードを実行
         """
         st.sidebar.title("ナビゲーション")
-        # 「自然言語からSQL」モードは削除し、2モードのみ表示
-        page = st.sidebar.radio("モードを選択", ["Cortex Analyst", "直接SQLクエリ"])
+        # モード選択（リロードなし）
+        page = st.sidebar.radio("モードを選択", ["Cortex Analyst", "直接SQLクエリ"], key="mode_selection")
+        
         session = get_snowpark_session()
         if not session:
             st.warning("Snowflake接続を確立できませんでした。")
             return
+        
         try:
             current_db = session.get_current_database()
             current_schema = session.get_current_schema()
             current_warehouse = session.get_current_warehouse()
+            
             st.sidebar.subheader("現在の接続情報")
             st.sidebar.info(
                 f"データベース: {current_db}\n"
                 f"スキーマ: {current_schema}\n"
                 f"ウェアハウス: {current_warehouse}"
             )
+            
             databases = get_available_databases()
             if not databases:
                 st.warning("データベースを取得できませんでした。")
                 return
-            default_db_index = databases.index(current_db) if current_db in databases else 0
-            selected_db = st.sidebar.selectbox("データベースを選択", databases, index=default_db_index)
+            
+            # デフォルトインデックスの設定を改善
+            try:
+                default_db_index = databases.index(current_db) if current_db in databases else 0
+            except (ValueError, TypeError):
+                default_db_index = 0
+                
+            selected_db = st.sidebar.selectbox(
+                "データベースを選択", 
+                databases, 
+                index=default_db_index,
+                key="database_selection"
+            )
+            
             if selected_db:
                 schemas = get_available_schemas(selected_db)
                 if not schemas:
                     st.warning(f"データベース {selected_db} にスキーマが見つかりません。")
                     return
-                default_schema_index = schemas.index(current_schema) if current_schema in schemas else 0
-                selected_schema = st.sidebar.selectbox("スキーマを選択", schemas, index=default_schema_index)
+                
+                try:
+                    default_schema_index = schemas.index(current_schema) if current_schema in schemas else 0
+                except (ValueError, TypeError):
+                    default_schema_index = 0
+                    
+                selected_schema = st.sidebar.selectbox(
+                    "スキーマを選択", 
+                    schemas, 
+                    index=default_schema_index,
+                    key="schema_selection"
+                )
+                
                 if selected_schema:
                     if page == "Cortex Analyst":
                         st.subheader("Cortex Analystモード")
@@ -638,29 +668,52 @@ with tabs[1]:
                         if not stages:
                             st.warning(f"スキーマ {selected_schema} にステージが見つかりません。")
                             return
-                        selected_stage = st.sidebar.selectbox("ステージを選択", stages)
+                        
+                        selected_stage = st.sidebar.selectbox(
+                            "ステージを選択", 
+                            stages,
+                            key="stage_selection"
+                        )
+                        
                         if selected_stage:
                             files = get_files_in_stage(selected_db, selected_schema, selected_stage)
                             if not files:
                                 st.warning(f"ステージ {selected_stage} にファイルが見つかりません。")
                                 return
+                            
                             yaml_files = [f for f in files if f.endswith('.yaml') or f.endswith('.yml')]
                             if not yaml_files:
                                 st.warning(f"ステージ {selected_stage} にYAMLファイルが見つかりません。")
                                 return
-                            selected_file = st.sidebar.selectbox("Semantic Model (.yaml)を選択", yaml_files)
+                            
+                            selected_file = st.sidebar.selectbox(
+                                "Semantic Model (.yaml)を選択", 
+                                yaml_files,
+                                key="file_selection"
+                            )
+                            
                             if selected_file:
                                 file_name = selected_file.split('/')[-1]
                                 st.markdown(f"Semantic Model: `{file_name}`")
-                                if st.button("チャット履歴をクリア"):
+                                
+                                # チャット履歴クリアボタン
+                                if st.button("チャット履歴をクリア", key="clear_chat_history"):
                                     st.session_state.messages = []
                                     st.session_state.active_suggestion = None
+                                    st.rerun()  # この場合のみリロードが必要
+                                
+                                # セッション状態の初期化（改善版）
                                 if "messages" not in st.session_state:
                                     st.session_state.messages = []
+                                if "active_suggestion" not in st.session_state:
                                     st.session_state.active_suggestion = None
+                                
+                                # チャット履歴の表示
                                 for message_index, message in enumerate(st.session_state.messages):
                                     with st.chat_message(message["role"]):
                                         display_content(content=message["content"], message_index=message_index)
+                                
+                                # ユーザー入力の処理
                                 if user_input := st.chat_input("何か質問がありますか？"):
                                     process_message(
                                         prompt=user_input,
@@ -669,6 +722,8 @@ with tabs[1]:
                                         stage=selected_stage,
                                         file=file_name
                                     )
+                                
+                                # アクティブな提案の処理（リロードなし）
                                 if st.session_state.get("active_suggestion"):
                                     process_message(
                                         prompt=st.session_state.active_suggestion,
@@ -678,13 +733,20 @@ with tabs[1]:
                                         file=file_name
                                     )
                                     st.session_state.active_suggestion = None
+                    
                     elif page == "直接SQLクエリ":
                         st.subheader("直接SQLクエリモード")
                         tables = get_available_tables(selected_db, selected_schema)
                         if not tables:
                             st.warning(f"スキーマ {selected_schema} にテーブルが見つかりません。")
                             return
-                        selected_table = st.sidebar.selectbox("テーブルを選択", tables)
+                        
+                        selected_table = st.sidebar.selectbox(
+                            "テーブルを選択", 
+                            tables,
+                            key="table_selection"
+                        )
+                        
                         if selected_table:
                             columns = get_table_schema(selected_db, selected_schema, selected_table)
                             with st.expander("テーブル構造", expanded=False):
@@ -694,10 +756,18 @@ with tabs[1]:
                                     "NULL許可": [col["nullable"] for col in columns],
                                 })
                                 st.dataframe(table_info)
+                            
                             default_query = f"SELECT * FROM {selected_db}.{selected_schema}.{selected_table} LIMIT 100"
-                            sql_query = st.text_area("SQLクエリを入力してください", value=default_query, height=200)
-                            if st.button("クエリを実行"):
+                            sql_query = st.text_area(
+                                "SQLクエリを入力してください", 
+                                value=default_query, 
+                                height=200,
+                                key="sql_query_input"
+                            )
+                            
+                            if st.button("クエリを実行", key="execute_sql_query"):
                                 display_sql(sql_query)
+        
         except Exception as e:
             st.error(f"アプリ実行中にエラーが発生しました: {e}")
             st.info("Snowflake環境に正しく接続されていることを確認してください。")

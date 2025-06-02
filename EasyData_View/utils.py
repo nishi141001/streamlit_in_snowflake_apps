@@ -4,6 +4,8 @@ import json
 from snowflake.snowpark.context import get_active_session
 import snowflake.connector
 import _snowflake
+from datetime import datetime
+import io
 
 # ---------------------------------------------------
 # Snowflake接続・データ取得用関数群
@@ -237,6 +239,121 @@ def process_message(prompt: str, database: str, schema: str, stage: str, file: s
             st.error("応答の生成中にエラーが発生しました。")
             return [{"type": "text", "text": "応答の生成中にエラーが発生しました。"}]
 
+def render_download_section(data: pd.DataFrame, table_name: str = "data") -> None:
+    """
+    データのダウンロードセクションを表示する関数（リロード最小化版）
+    
+    Args:
+        data (pd.DataFrame): ダウンロード対象のデータ
+        table_name (str): ファイル名に使用するテーブル名
+    """
+    try:
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            # ファイル形式の選択（リロードなし）
+            format_choice = st.selectbox(
+                "ファイル形式",
+                ["CSV", "Excel (XLSX)"],
+                key=f"export_format_{table_name}"
+            )
+            
+            # タイムスタンプの設定（リロードなし）
+            timestamp_enabled = st.checkbox(
+                "タイムスタンプ付きファイル名",
+                value=True,
+                key=f"add_timestamp_{table_name}"
+            )
+
+        with col2:
+            # CSVの場合のみエンコーディング選択を表示
+            if format_choice == "CSV":
+                encoding_choice = st.selectbox(
+                    "エンコーディング",
+                    ["UTF-8", "Shift_JIS"],
+                    key=f"encoding_{table_name}"
+                )
+
+        # ダウンロード処理
+        if format_choice == "CSV":
+            # CSV処理
+            csv_encoding = 'utf-8-sig' if encoding_choice == "UTF-8" else 'shift_jis'
+            csv_data = data.to_csv(index=False, encoding=csv_encoding)
+            
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S') if timestamp_enabled else ""
+            filename = f"{table_name}_{timestamp}.csv" if timestamp else f"{table_name}.csv"
+            
+            st.download_button(
+                label="📥 CSVダウンロード",
+                data=csv_data,
+                file_name=filename,
+                mime="text/csv",
+                use_container_width=True,
+                key=f"csv_download_{table_name}"
+            )
+        else:
+            # Excel処理
+            buffer = io.BytesIO()
+            with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+                data.to_excel(writer, sheet_name='データ', index=False)
+            
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S') if timestamp_enabled else ""
+            filename = f"{table_name}_{timestamp}.xlsx" if timestamp else f"{table_name}.xlsx"
+            
+            st.download_button(
+                label="📥 Excelダウンロード",
+                data=buffer.getvalue(),
+                file_name=filename,
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+                key=f"excel_download_{table_name}"
+            )
+    
+    except Exception as e:
+        st.error(f"ダウンロード機能でエラーが発生しました: {str(e)}")
+
+def display_sql_results(df: pd.DataFrame, query_name: str = "query") -> None:
+    """
+    SQLクエリの結果を表示し、ダウンロード機能を提供する関数
+    
+    Args:
+        df (pd.DataFrame): 表示するデータ
+        query_name (str): クエリの識別名（ファイル名に使用）
+    """
+    if len(df.index) > 0:
+        data_tab, line_tab, bar_tab, download_tab = st.tabs(["Data", "Line Chart", "Bar Chart", "Download"])
+        
+        with data_tab:
+            st.dataframe(df)
+        
+        if len(df.columns) > 1:
+            chart_df = df.copy()
+            index_col = chart_df.columns[0]
+            chart_df = chart_df.set_index(index_col)
+            numeric_cols = chart_df.select_dtypes(include=['number']).columns
+            
+            if len(numeric_cols) > 0:
+                numeric_df = chart_df[numeric_cols]
+                with line_tab:
+                    st.line_chart(numeric_df)
+                with bar_tab:
+                    st.bar_chart(numeric_df)
+            else:
+                with line_tab:
+                    st.info("グラフを表示するには、数値型のカラムが必要です。")
+                with bar_tab:
+                    st.info("グラフを表示するには、数値型のカラムが必要です。")
+        else:
+            with line_tab:
+                st.info("グラフを表示するには、複数のカラムが必要です。")
+            with bar_tab:
+                st.info("グラフを表示するには、複数のカラムが必要です。")
+        
+        with download_tab:
+            render_download_section(df, query_name)
+    else:
+        st.info("クエリは正常に実行されましたが、結果は空です。")
+
 def display_content(content: list, message_index: int = None) -> None:
     """
     Cortex Analystの応答内容（テキスト、提案、SQL）を適切に表示する関数
@@ -248,7 +365,9 @@ def display_content(content: list, message_index: int = None) -> None:
         elif item["type"] == "suggestions":
             with st.expander("提案された質問", expanded=True):
                 for suggestion_index, suggestion in enumerate(item["suggestions"]):
-                    if st.button(suggestion, key=f"{message_index}_{suggestion_index}"):
+                    # ユニークなキーを生成してリロードを防止
+                    button_key = f"suggestion_{message_index}_{suggestion_index}_{hash(suggestion) % 10000}"
+                    if st.button(suggestion, key=button_key):
                         st.session_state.active_suggestion = suggestion
         elif item["type"] == "sql":
             with st.expander("SQL Query", expanded=False):
@@ -261,31 +380,6 @@ def display_content(content: list, message_index: int = None) -> None:
                             st.error("Snowparkセッションを利用できません")
                             return
                         df = session.sql(item["statement"]).to_pandas()
-                        if len(df.index) > 0:
-                            data_tab, line_tab, bar_tab = st.tabs(["Data", "Line Chart", "Bar Chart"])
-                            data_tab.dataframe(df)
-                            if len(df.columns) > 1:
-                                chart_df = df.copy()
-                                index_col = chart_df.columns[0]
-                                chart_df = chart_df.set_index(index_col)
-                                numeric_cols = chart_df.select_dtypes(include=['number']).columns
-                                if len(numeric_cols) > 0:
-                                    numeric_df = chart_df[numeric_cols]
-                                    with line_tab:
-                                        st.line_chart(numeric_df)
-                                    with bar_tab:
-                                        st.bar_chart(numeric_df)
-                                else:
-                                    with line_tab:
-                                        st.info("グラフを表示するには、数値型のカラムが必要です。")
-                                    with bar_tab:
-                                        st.info("グラフを表示するには、数値型のカラムが必要です。")
-                            else:
-                                with line_tab:
-                                    st.info("グラフを表示するには、複数のカラムが必要です。")
-                                with bar_tab:
-                                    st.info("グラフを表示するには、複数のカラムが必要です。")
-                        else:
-                            st.info("クエリは正常に実行されましたが、結果は空です。")
+                        display_sql_results(df, f"query_{message_index}")
                     except Exception as e:
-                        st.error(f"SQLクエリの実行中にエラーが発生しました: {e}") 
+                        st.error(f"SQLクエリの実行中にエラーが発生しました: {e}")

@@ -7,6 +7,7 @@ from utils import (
     get_available_stages,
     get_files_in_stage,
     process_message,
+    display_sql_results,
 )
 
 # ---------------------------------------------------
@@ -133,32 +134,7 @@ for message in st.session_state.messages:
                                     st.error("Snowparkセッションを利用できません")
                                     continue
                                 df = session.sql(item["statement"]).to_pandas()
-                                if len(df.index) > 0:
-                                    data_tab, line_tab, bar_tab = st.tabs(["Data", "Line Chart", "Bar Chart"])
-                                    data_tab.dataframe(df)
-                                    if len(df.columns) > 1:
-                                        chart_df = df.copy()
-                                        index_col = chart_df.columns[0]
-                                        chart_df = chart_df.set_index(index_col)
-                                        numeric_cols = chart_df.select_dtypes(include=['number']).columns
-                                        if len(numeric_cols) > 0:
-                                            numeric_df = chart_df[numeric_cols]
-                                            with line_tab:
-                                                st.line_chart(numeric_df)
-                                            with bar_tab:
-                                                st.bar_chart(numeric_df)
-                                        else:
-                                            with line_tab:
-                                                st.info("グラフを表示するには、数値型のカラムが必要です。")
-                                            with bar_tab:
-                                                st.info("グラフを表示するには、数値型のカラムが必要です。")
-                                    else:
-                                        with line_tab:
-                                            st.info("グラフを表示するには、複数のカラムが必要です。")
-                                        with bar_tab:
-                                            st.info("グラフを表示するには、複数のカラムが必要です。")
-                                else:
-                                    st.info("クエリは正常に実行されましたが、結果は空です。")
+                                display_sql_results(df, f"query_{len(st.session_state.messages)}")
                             except Exception as e:
                                 st.error(f"SQLクエリの実行中にエラーが発生しました: {e}")
 
@@ -192,32 +168,7 @@ if prompt := st.chat_input("質問を入力してください"):
                                 st.error("Snowparkセッションを利用できません")
                                 continue
                             df = session.sql(item["statement"]).to_pandas()
-                            if len(df.index) > 0:
-                                data_tab, line_tab, bar_tab = st.tabs(["Data", "Line Chart", "Bar Chart"])
-                                data_tab.dataframe(df)
-                                if len(df.columns) > 1:
-                                    chart_df = df.copy()
-                                    index_col = chart_df.columns[0]
-                                    chart_df = chart_df.set_index(index_col)
-                                    numeric_cols = chart_df.select_dtypes(include=['number']).columns
-                                    if len(numeric_cols) > 0:
-                                        numeric_df = chart_df[numeric_cols]
-                                        with line_tab:
-                                            st.line_chart(numeric_df)
-                                        with bar_tab:
-                                            st.bar_chart(numeric_df)
-                                    else:
-                                        with line_tab:
-                                            st.info("グラフを表示するには、数値型のカラムが必要です。")
-                                        with bar_tab:
-                                            st.info("グラフを表示するには、数値型のカラムが必要です。")
-                                else:
-                                    with line_tab:
-                                        st.info("グラフを表示するには、複数のカラムが必要です。")
-                                    with bar_tab:
-                                        st.info("グラフを表示するには、複数のカラムが必要です。")
-                            else:
-                                st.info("クエリは正常に実行されましたが、結果は空です。")
+                            display_sql_results(df, f"query_{len(st.session_state.messages)}")
                         except Exception as e:
                             st.error(f"SQLクエリの実行中にエラーが発生しました: {e}")
         st.session_state.messages.append({"role": "assistant", "content": response_content}) 

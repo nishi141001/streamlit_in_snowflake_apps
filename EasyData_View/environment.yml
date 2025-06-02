@@ -2,6 +2,7 @@ name: app_environment
 channels:
   - snowflake
 dependencies:
+  - openpyxl=3.1.5
   - python=3.11.*
   - snowflake-snowpark-python=
   - streamlit=
